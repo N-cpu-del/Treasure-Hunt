@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Graffiti Treasure Hunt: Urban Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Orbitron:wght@400;700&family=Bangers&family=Inter:wght@400;700;900&display=swap');
+
+        :root {
+            --neon-pink: #ff007f;
+            --neon-blue: #00f2ff;
+            --neon-yellow: #f3ff00;
+            --neon-green: #39ff14;
+            --dark-bg: #0a0a0c;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--dark-bg);
+            font-family: 'Inter', sans-serif;
+            color: white;
+            touch-action: none;
+        }
+
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            background: radial-gradient(circle at center, #1a0b2e 0%, #050505 100%);
+        }
+
+        .scanline {
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(to bottom, transparent, rgba(0, 242, 255, 0.15), transparent);
+            position: absolute;
+            animation: moveScanline 4s linear infinite;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        @keyframes moveScanline {
+            0% { top: -10%; }
+            100% { top: 110%; }
+        }
+
+        .graffiti-font { font-family: 'Permanent Marker', cursive; }
+        .tech-font { font-family: 'Orbitron', sans-serif; }
+
+        .screen {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: scale(0.9);
+            z-index: 10;
+        }
+
+        .screen.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: scale(1);
+        }
+
+        .glass-card {
+            background: rgba(15, 15, 20, 0.85);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 28px;
+            padding: 30px;
+            width: 100%;
+            max-width: 550px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(0, 242, 255, 0.05);
+            position: relative;
+        }
+
+        .neon-btn {
+            background: #000;
+            border: 2px solid var(--neon-pink);
+            color: var(--neon-pink);
+            padding: 16px 32px;
+            border-radius: 14px;
+            text-transform: uppercase;
+            font-weight: 900;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(255, 0, 127, 0.3);
+            cursor: pointer;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .neon-btn:hover:not(:disabled) {
+            background: var(--neon-pink);
+            color: white;
+            box-shadow: 0 0 40px var(--neon-pink);
+            transform: translateY(-2px);
+        }
+
+        .neon-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: #444;
+            color: #444;
+        }
+
+        .puzzle-piece {
+            position: absolute;
+            padding: 14px 22px;
+            background: #15151a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            cursor: grab;
+            font-weight: 800;
+            z-index: 100;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+            user-select: none;
+            transition: background 0.3s, transform 0.2s;
+        }
+
+        .puzzle-piece[data-type="prefix"] { color: var(--neon-blue); border-left: 6px solid var(--neon-blue); }
+        .puzzle-piece[data-type="suffix"] { color: var(--neon-yellow); border-right: 6px solid var(--neon-yellow); }
+        
+        .puzzle-piece.matched { 
+            background: var(--neon-green) !important; 
+            color: black !important; 
+            border: none !important;
+            box-shadow: 0 0 15px var(--neon-green);
+            cursor: default !important;
+            z-index: 50 !important;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        .wrong-shake { 
+            animation: shake 0.4s ease-in-out;
+            border-color: var(--neon-pink) !important;
+        }
+
+        .dropzone {
+            display: inline-block;
+            min-width: 130px;
+            height: 32px;
+            border-bottom: 2px dashed var(--neon-blue);
+            margin: 0 4px;
+            vertical-align: middle;
+            background: rgba(0, 242, 255, 0.05);
+            border-radius: 4px;
+            text-align: center;
+        }
+        .dropzone.filled { border: none; background: transparent; color: var(--neon-pink); font-weight: bold; }
+
+        #hud {
+            position: fixed;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 5;
+            pointer-events: none;
+        }
+        
+        #hud > div {
+            pointer-events: auto;
+        }
+
+        .treasure-box {
+            padding: 10px 22px;
+            background: rgba(0,0,0,0.85);
+            border: 2px solid var(--neon-yellow);
+            border-radius: 50px;
+            color: var(--neon-yellow);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            z-index: 1000;
+            animation: fall linear forwards;
+        }
+
+        @keyframes fall {
+            to { transform: translateY(100vh) rotate(360deg); }
+        }
+
+        @keyframes pulse-gold {
+            0%, 100% { box-shadow: 0 0 20px var(--neon-yellow); }
+            50% { box-shadow: 0 0 40px #fff; }
+        }
+        .win-glow { animation: pulse-gold 2s infinite; }
+    </style>
+</head>
+<body>
+
+    <div class="scanline"></div>
+    <canvas id="bg-canvas"></canvas>
+
+    <div id="hud" class="opacity-0 transition-opacity duration-500">
+        <div class="treasure-box tech-font text-xs sm:text-sm">
+            <span class="text-xl">🔑</span>
+            KEYS: <span id="key-count">0/4</span>
+        </div>
+        <div class="treasure-box tech-font text-xs sm:text-sm border-pink-500 text-pink-500">
+            <span class="text-xl">⏱️</span>
+            TIME: <span id="global-timer">00:00</span>
+        </div>
+    </div>
+
+    <!-- INITIAL BRIEFING -->
+    <div id="instruction-screen" class="screen active">
+        <div class="glass-card text-center">
+            <h1 class="graffiti-font text-5xl mb-6 text-pink-500 tracking-wider">TREASURE RUN</h1>
+            <div class="space-y-4 text-left mb-8 opacity-90 text-sm border-l-4 border-pink-500 pl-4">
+                <p>Welcome to the <span class="text-blue-400 font-bold">Graffiti Hunt</span>. There are 4 stages.</p>
+                <p>1. Complete the digital task to get a <span class="text-yellow-400 font-bold">Secret Clue</span>.</p>
+                <p>2. Use the clue to find a <span class="text-green-400 font-bold">Physical Key</span> hidden in this room.</p>
+                <p>3. Return to the screen to unlock the next level.</p>
+                <p>Collect all <span class="text-pink-500 font-bold">4 keys</span> to unlock the final treasure!</p>
+            </div>
+            <button class="neon-btn w-full text-xl" onclick="startApp()">START MISSION</button>
+        </div>
+    </div>
+
+    <!-- STAGE MODAL -->
+    <div id="stage-briefing" class="screen bg-black/90 z-[3000]">
+        <div class="glass-card text-center border-blue-500">
+            <h2 id="briefing-title" class="graffiti-font text-4xl text-blue-400 mb-4">MISSION</h2>
+            <p id="briefing-desc" class="mb-8 opacity-95 text-lg"></p>
+            <button class="neon-btn w-full" onclick="closeBriefing()">GO!</button>
+        </div>
+    </div>
+
+    <!-- STAGE 1 (A & B) -->
+    <div id="stage1a" class="screen"><div id="puzzle-area" class="w-full h-full relative"></div></div>
+    <div id="stage1b" class="screen">
+        <div class="glass-card max-w-2xl">
+            <h2 class="graffiti-font text-3xl text-pink-500 mb-4">URBAN STORY</h2>
+            <div id="paragraph-container" class="text-lg leading-relaxed mb-6">
+                In our city, graffiti is a <span class="dropzone" data-answer="well-known"></span> hobby. 
+                Artists use <span class="dropzone" data-answer="spray-painted"></span> cans to make art. 
+                They paint during <span class="dropzone" data-answer="night-time"></span> hours so no one sees them. 
+                Some pieces are <span class="dropzone" data-answer="world-famous"></span> murals. 
+                The colors are <span class="dropzone" data-answer="brightly-colored"></span> paints. 
+                Every <span class="dropzone" data-answer="hand-drawn"></span> tag is unique. 
+                This art is really <span class="dropzone" data-answer="eye-catching"></span> work. 
+                The artists must be <span class="dropzone" data-answer="quick-thinking"></span> creators!
+            </div>
+            <div id="adjective-bank" class="flex flex-wrap gap-2 justify-center border-t border-gray-800 pt-4"></div>
+            <button class="neon-btn w-full mt-6 hidden" id="stg1b-btn" onclick="showClue('Key 1 is on the water-cooled dispenser.')">GET CLUE</button>
+        </div>
+    </div>
+
+    <!-- STAGE 2 -->
+    <div id="stage2" class="screen">
+        <div class="glass-card">
+            <h2 class="graffiti-font text-3xl text-pink-500 mb-2">STAGE 2</h2>
+            <div id="stage2-timer" class="tech-font text-center text-4xl mb-4 text-pink-500">03:00</div>
+            <p class="text-xs text-center opacity-60 mb-4 uppercase tracking-tighter">Write as many compound adjectives as you can (use hyphens!)</p>
+            <textarea id="word-list-input" class="w-full bg-black border-2 border-blue-500 p-4 rounded text-white font-mono" rows="6" placeholder="Example: blue-eyed, high-speed..."></textarea>
+            <div id="stage2-feedback" class="text-sm mt-4 text-yellow-400 hidden italic max-h-32 overflow-y-auto bg-black/50 p-2 rounded border border-yellow-400/30"></div>
+        </div>
+    </div>
+
+    <!-- STAGE 3 -->
+    <div id="stage3" class="screen">
+        <div class="glass-card max-h-[90vh] overflow-y-auto">
+            <h2 class="graffiti-font text-3xl text-yellow-400 mb-4 text-center">STAGE 3</h2>
+            <div id="rewrite-form" class="space-y-4"></div>
+            <button class="neon-btn w-full mt-6" id="s3-finish-btn" onclick="validateStage3()">FINISH</button>
+        </div>
+    </div>
+
+    <!-- FINAL TRANSITION -->
+    <div id="final-confirm" class="screen z-[4000] bg-black/95">
+        <div class="glass-card text-center border-pink-500">
+            <h2 class="graffiti-font text-4xl text-pink-500 mb-6">READY FOR THE FINAL ROUND?</h2>
+            <button class="neon-btn w-full text-2xl" onclick="startFinalStage()">YES, LET'S DO IT!</button>
+        </div>
+    </div>
+
+    <!-- STAGE 4 (TEACHER CHALLENGE) -->
+    <div id="stage4" class="screen">
+        <div class="glass-card text-center border-green-500">
+            <h2 class="graffiti-font text-3xl text-green-400 mb-4">THE FINAL CHALLENGE</h2>
+            <div class="text-left space-y-4 mb-8 bg-black/40 p-6 rounded-xl border border-green-500/30">
+                <p class="font-bold text-yellow-400">The key to the final stage is with your teacher!</p>
+                <p>In order to receive the key, you have to do the following:</p>
+                <ol class="list-decimal ml-6 space-y-2 text-sm">
+                    <li>Find a street painting / graffiti on the internet.</li>
+                    <li>Think of 5 sentences to describe this graffiti.</li>
+                    <li>Each sentence has to include a <span class="text-pink-500 font-bold">compound adjective</span>.</li>
+                    <li>Run to your teacher telling her the sentences. Each student has to say one sentence.</li>
+                    <li>Once you finish these steps, press the "I have all keys".</li>
+                </ol>
+            </div>
+            <button class="neon-btn w-full win-glow" onclick="showVictory()">I HAVE ALL KEYS!</button>
+        </div>
+    </div>
+
+    <!-- VICTORY SCREEN -->
+    <div id="victory-screen" class="screen bg-black/90">
+        <div class="glass-card text-center border-yellow-400 scale-110">
+            <h1 class="graffiti-font text-6xl text-yellow-400 mb-4 animate-bounce">HOORAY!</h1>
+            <h2 class="tech-font text-2xl text-white mb-6">MISSION ACCOMPLISHED</h2>
+            <p class="text-xl text-green-400 mb-4 font-bold">GO TO THE TEACHER TO RECEIVE YOUR PRIZE!</p>
+            <div class="bg-black/50 border border-yellow-400/30 p-4 rounded-lg mb-6">
+                <p class="text-gray-400 text-sm uppercase tech-font">Final Score Time</p>
+                <p id="final-time-display" class="text-5xl text-yellow-400 tech-font mt-2">00:00</p>
+                <p class="text-xs text-white/50 mt-4 uppercase italic">Take a screenshot of this screen to document your time!</p>
+            </div>
+            <div class="flex justify-center gap-4 text-5xl mb-4">💰 💎 🏆 💰</div>
+            <button class="neon-btn border-yellow-400 text-yellow-400" onclick="location.reload()">PLAY AGAIN</button>
+        </div>
+    </div>
+
+    <!-- CLUE MODAL -->
+    <div id="clue-modal" class="screen bg-black/98 z-[5000]">
+        <div class="glass-card border-yellow-400 text-center">
+            <h2 class="tech-font text-2xl text-yellow-400 mb-4">LOCATION UNLOCKED</h2>
+            <p id="clue-text" class="text-2xl font-bold text-white mb-8 italic px-4"></p>
+            <p class="text-xs opacity-50 mb-4 uppercase">Find the physical key, then tap below.</p>
+            <button class="neon-btn w-full" onclick="nextStage()">I HAVE THE KEY</button>
+        </div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSfx(freq = 440, type = 'sine', duration = 0.1, volume = 0.1) {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type; 
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(volume, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(g); 
+            g.connect(audioCtx.destination);
+            osc.start(); 
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playClickSfx() {
+            playSfx(1200, 'sine', 0.05, 0.05);
+        }
+
+        let keysCollected = 0;
+        let gameTime = 0;
+        let timerInterval = null;
+        let currentStageId = 1;
+        let activeAdjectives = [];
+
+        const urbanAdjectives = [
+            { prefix: 'Spray', suffix: 'painted' }, { prefix: 'Well', suffix: 'known' },
+            { prefix: 'Brightly', suffix: 'colored' }, { prefix: 'Hand', suffix: 'drawn' },
+            { prefix: 'Night', suffix: 'time' }, { prefix: 'World', suffix: 'famous' },
+            { prefix: 'Eye', suffix: 'catching' }, { prefix: 'Quick', suffix: 'thinking' }
+        ];
+
+        const briefings = {
+            1: { title: "MISSION 1", desc: "Match two parts of the adjectives. Then, complete the paragraph." },
+            2: { title: "MISSION 2", desc: "List as many compound adjectives as you can in 3 minutes! Go!" },
+            3: { title: "MISSION 3", desc: "Change the long sentences into short compound adjectives. Write the full phrase (e.g., 'a blue-eyed girl')." }
+        };
+
+        function startApp() {
+            playClickSfx();
+            document.getElementById('instruction-screen').classList.remove('active');
+            document.getElementById('hud').classList.remove('opacity-0');
+            timerInterval = setInterval(() => {
+                gameTime++;
+                updateTimerDisplay('global-timer', gameTime);
+            }, 1000);
+            showBriefing(1);
+        }
+
+        function updateTimerDisplay(id, time) {
+            const m = Math.floor(time/60).toString().padStart(2,'0');
+            const s = (time%60).toString().padStart(2,'0');
+            document.getElementById(id).innerText = `${m}:${s}`;
+        }
+
+        function showBriefing(num) {
+            currentStageId = num;
+            document.getElementById('briefing-title').innerText = briefings[num].title;
+            document.getElementById('briefing-desc').innerText = briefings[num].desc;
+            document.getElementById('stage-briefing').classList.add('active');
+        }
+
+        function closeBriefing() {
+            playClickSfx();
+            document.getElementById('stage-briefing').classList.remove('active');
+            if (currentStageId === 1) initStage1A();
+            if (currentStageId === 2) startStage2();
+            if (currentStageId === 3) initStage3();
+        }
+
+        function initStage1A() {
+            document.getElementById('stage1a').classList.add('active');
+            const area = document.getElementById('puzzle-area');
+            area.innerHTML = '';
+            const pieces = [];
+            urbanAdjectives.forEach((adj, i) => {
+                pieces.push({ text: adj.prefix, pair: i, type: 'prefix' });
+                pieces.push({ text: adj.suffix, pair: i, type: 'suffix' });
+            });
+            pieces.sort(() => Math.random() - 0.5).forEach(p => {
+                const el = document.createElement('div');
+                el.className = 'puzzle-piece tech-font';
+                el.innerText = p.text.toUpperCase();
+                el.dataset.pair = p.pair;
+                el.dataset.type = p.type;
+                el.style.left = Math.random() * (window.innerWidth - 180) + 'px';
+                el.style.top = Math.random() * (window.innerHeight - 300) + 150 + 'px';
+                attachDrag(el);
+                area.appendChild(el);
+            });
+        }
+
+        function attachDrag(el) {
+            let startX, startY, isDragging = false;
+            
+            const onStart = (e) => {
+                if (el.classList.contains('matched')) return;
+                isDragging = true;
+                playSfx(300, 'sine', 0.05, 0.02);
+                const t = e.touches ? e.touches[0] : e;
+                startX = t.clientX; startY = t.clientY;
+                
+                const toMove = [];
+                if (el.dataset.partnerId) {
+                    const partner = document.getElementById(el.dataset.partnerId);
+                    toMove.push({ el: el, ox: el.offsetLeft, oy: el.offsetTop });
+                    toMove.push({ el: partner, ox: partner.offsetLeft, oy: partner.offsetTop });
+                    el.style.zIndex = 200; partner.style.zIndex = 200;
+                } else {
+                    toMove.push({ el: el, ox: el.offsetLeft, oy: el.offsetTop });
+                    el.style.zIndex = 200;
+                }
+                
+                const onMove = (e) => {
+                    if(!isDragging) return; e.preventDefault();
+                    const t = e.touches ? e.touches[0] : e;
+                    const dx = t.clientX - startX;
+                    const dy = t.clientY - startY;
+                    toMove.forEach(item => {
+                        item.el.style.left = (item.ox + dx) + 'px';
+                        item.el.style.top = (item.oy + dy) + 'px';
+                    });
+                };
+                
+                const onEnd = () => {
+                    isDragging = false;
+                    document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onEnd);
+                    document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd);
+                    if (!el.dataset.partnerId) checkMatch(el);
+                    else { el.style.zIndex = 100; document.getElementById(el.dataset.partnerId).style.zIndex = 100; }
+                };
+                
+                document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onEnd);
+                document.addEventListener('touchmove', onMove, {passive:false}); document.addEventListener('touchend', onEnd);
+            };
+            
+            el.addEventListener('mousedown', onStart); el.addEventListener('touchstart', onStart);
+        }
+
+        function checkMatch(el) {
+            const targets = document.querySelectorAll('.puzzle-piece:not(.matched)');
+            let potentialMatch = null;
+            const r1 = el.getBoundingClientRect();
+            
+            targets.forEach(t => {
+                if (t === el) return;
+                const r2 = t.getBoundingClientRect();
+                const dist = Math.hypot((r1.left + r1.width/2)-(r2.left+r2.width/2), (r1.top+r1.height/2)-(r2.top+r2.height/2));
+                if (dist < 80) potentialMatch = t;
+            });
+
+            if (!potentialMatch) { el.style.zIndex = 100; return; }
+
+            if (el.dataset.pair === potentialMatch.dataset.pair && el.dataset.type !== potentialMatch.dataset.type) {
+                const prefix = el.dataset.type === 'prefix' ? el : potentialMatch;
+                const suffix = el.dataset.type === 'suffix' ? el : potentialMatch;
+                
+                prefix.classList.add('matched');
+                suffix.classList.add('matched');
+                
+                const groupId = 'pair-' + el.dataset.pair;
+                prefix.id = groupId + '-p';
+                suffix.id = groupId + '-s';
+                prefix.dataset.partnerId = suffix.id;
+                suffix.dataset.partnerId = prefix.id;
+
+                const targetY = prefix.offsetTop;
+                const targetX = prefix.offsetLeft;
+                suffix.style.top = targetY + 'px';
+                suffix.style.left = (targetX + prefix.offsetWidth + 5) + 'px';
+
+                playSfx(600, 'square', 0.2);
+                activeAdjectives.push(`${urbanAdjectives[el.dataset.pair].prefix.toLowerCase()}-${urbanAdjectives[el.dataset.pair].suffix.toLowerCase()}`);
+                
+                if (activeAdjectives.length === urbanAdjectives.length) {
+                    setTimeout(initStage1B, 1200);
+                }
+            } 
+            else if (el.dataset.type !== potentialMatch.dataset.type) {
+                playSfx(150, 'sawtooth', 0.2);
+                el.classList.add('wrong-shake');
+                potentialMatch.classList.add('wrong-shake');
+                setTimeout(() => {
+                    el.classList.remove('wrong-shake');
+                    potentialMatch.classList.remove('wrong-shake');
+                    el.style.zIndex = 100;
+                }, 400);
+            } else {
+                el.style.zIndex = 100;
+            }
+        }
+
+        function initStage1B() {
+            document.getElementById('stage1a').classList.remove('active');
+            document.getElementById('stage1b').classList.add('active');
+            const bank = document.getElementById('adjective-bank');
+            bank.innerHTML = '';
+            activeAdjectives.forEach((adj, i) => {
+                const b = document.createElement('div');
+                b.id = `bank-${i}`; b.className = 'bg-gray-800 p-2 rounded text-xs tech-font border border-blue-500 cursor-pointer';
+                b.innerText = adj; b.draggable = true;
+                b.addEventListener('dragstart', (e) => { 
+                    playSfx(400, 'sine', 0.05);
+                    e.dataTransfer.setData('text', adj); 
+                    e.dataTransfer.setData('id', b.id); 
+                });
+                bank.appendChild(b);
+            });
+            document.querySelectorAll('.dropzone').forEach(dz => {
+                dz.addEventListener('dragover', e => e.preventDefault());
+                dz.addEventListener('drop', e => {
+                    const val = e.dataTransfer.getData('text');
+                    const id = e.dataTransfer.getData('id');
+                    if(val === dz.dataset.answer) {
+                        dz.innerText = val; dz.classList.add('filled');
+                        document.getElementById(id).remove();
+                        playSfx(800, 'sine', 0.1);
+                        if(document.querySelectorAll('.dropzone.filled').length === 8) document.getElementById('stg1b-btn').classList.remove('hidden');
+                    } else {
+                        playSfx(200, 'sawtooth', 0.2);
+                    }
+                });
+            });
+        }
+
+        function startStage2() {
+            document.getElementById('stage2').classList.add('active');
+            let timeLeft = 180;
+            const timer = setInterval(() => {
+                timeLeft--;
+                const m = Math.floor(timeLeft/60).toString().padStart(2,'0');
+                const s = (timeLeft%60).toString().padStart(2,'0');
+                document.getElementById('stage2-timer').innerText = `${m}:${s}`;
+                if(timeLeft <= 0) {
+                    clearInterval(timer);
+                    finalizeStage2();
+                }
+            }, 1000);
+        }
+
+        function finalizeStage2() {
+            const input = document.getElementById('word-list-input');
+            input.disabled = true;
+            const words = input.value.split(/[\s,]+/).filter(w => w.trim() !== "");
+            let feedback = [];
+            
+            words.forEach(word => {
+                if (!word.includes('-')) {
+                    feedback.push(`"${word}" is missing a hyphen.`);
+                } else {
+                    const parts = word.split('-');
+                    if (parts.length < 2 || parts[0].length < 2 || parts[1].length < 2) {
+                        feedback.push(`"${word}" doesn't look like a valid compound adjective.`);
+                    }
+                }
+            });
+
+            const fBox = document.getElementById('stage2-feedback');
+            if (feedback.length > 0 || words.length === 0) {
+                playSfx(300, 'sawtooth', 0.3);
+                fBox.innerHTML = words.length === 0 ? "You didn't write any words!" : `<strong>Correction Summary:</strong><br/>${feedback.join('<br/>')}`;
+                fBox.classList.remove('hidden');
+            } else {
+                playSfx(1000, 'sine', 0.5);
+                fBox.innerHTML = "Excellent work! Your compound adjectives look great.";
+                fBox.classList.remove('hidden');
+            }
+            setTimeout(() => showClue("Key 2 is inside a black-colored bag."), 8000);
+        }
+
+        const s3qs = [
+            { q: "A piece of art which costs two million dollars", a: "a two-million-dollar piece of art", hint: "a two...", ex: true },
+            { q: "A sentence that has five words", a: "a five-word sentence", hint: "a five..." },
+            { q: "The man who has green hair", a: "a green-haired man", hint: "a green..." },
+            { q: "Walls which are covered in trees", a: "tree-covered walls", hint: "tree..." },
+            { q: "The artist who was born in France", a: "a french-born artist", hint: "a french..." }
+        ];
+
+        function initStage3() {
+            document.getElementById('stage3').classList.add('active');
+            const f = document.getElementById('rewrite-form');
+            f.innerHTML = '';
+            s3qs.forEach((it, i) => {
+                f.innerHTML += `<div id="s3-wrap-${i}" class="p-3 rounded transition-colors duration-300">
+                    <label class="text-xs text-blue-400 font-bold uppercase block mb-1">${it.q}</label>
+                    <input id="s3-${i}" class="w-full bg-black/50 border-b-2 border-gray-700 p-2 text-white outline-none focus:border-blue-500" 
+                    ${it.ex ? `value="${it.a}" disabled` : 'placeholder="..."'} onfocus="playSfx(500, 'sine', 0.02, 0.02)">
+                    <p id="s3-hint-${i}" class="text-[10px] text-pink-400 mt-1 hidden italic"></p>
+                </div>`;
+            });
+        }
+
+        function validateStage3() {
+            playClickSfx();
+            let allCorrect = true;
+            s3qs.forEach((it, i) => {
+                if (it.ex) { document.getElementById(`s3-wrap-${i}`).classList.add('bg-green-900/20'); return; }
+                const input = document.getElementById(`s3-${i}`);
+                const wrap = document.getElementById(`s3-wrap-${i}`);
+                const hintEl = document.getElementById(`s3-hint-${i}`);
+                const userVal = input.value.trim().toLowerCase().replace(/\s+/g, ' ');
+                if (userVal === it.a.toLowerCase()) {
+                    wrap.classList.remove('bg-pink-900/20'); wrap.classList.add('bg-green-900/20');
+                    input.classList.replace('text-white', 'text-green-400'); hintEl.classList.add('hidden');
+                } else {
+                    allCorrect = false; wrap.classList.add('bg-pink-900/20'); input.classList.add('border-pink-500');
+                    hintEl.innerText = `Hint: Try starting with "${it.hint}" and include the noun!`; hintEl.classList.remove('hidden');
+                    playSfx(150, 'sawtooth', 0.1);
+                }
+            });
+            if (allCorrect) {
+                playSfx(800, 'sine', 0.3);
+                setTimeout(() => showClue("Key 3 is in an empty-looking classroom on the third floor."), 500);
+            }
+        }
+
+        function showClue(txt) {
+            playSfx(1200, 'sine', 0.5);
+            document.getElementById('clue-text').innerText = txt;
+            document.getElementById('clue-modal').classList.add('active');
+        }
+
+        function nextStage() {
+            playClickSfx();
+            keysCollected++;
+            document.getElementById('key-count').innerText = `${keysCollected}/4`;
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            if(keysCollected === 3) {
+                playSfx(1500, 'sine', 0.8);
+                document.getElementById('final-confirm').classList.add('active');
+            } else if (keysCollected === 4) {
+                showVictory();
+            } else showBriefing(keysCollected + 1);
+        }
+
+        function startFinalStage() {
+            playClickSfx();
+            document.getElementById('final-confirm').classList.remove('active');
+            document.getElementById('stage4').classList.add('active');
+        }
+
+        function showVictory() {
+            playClickSfx();
+            if (timerInterval) clearInterval(timerInterval);
+            const finalTimeText = document.getElementById('global-timer').innerText;
+            document.getElementById('final-time-display').innerText = finalTimeText;
+            document.getElementById('key-count').innerText = "4/4";
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('victory-screen').classList.add('active');
+            playSfx(440, 'sine', 0.5, 0.2);
+            setTimeout(() => playSfx(554, 'sine', 0.5, 0.2), 200);
+            setTimeout(() => playSfx(659, 'sine', 0.8, 0.2), 400);
+            for(let i=0; i<50; i++) createConfetti();
+        }
+
+        function createConfetti() {
+            const c = document.createElement('div');
+            c.className = 'confetti';
+            c.style.left = Math.random() * 100 + 'vw';
+            c.style.backgroundColor = ['#ff007f', '#00f2ff', '#f3ff00', '#39ff14'][Math.floor(Math.random()*4)];
+            c.style.animationDuration = (Math.random() * 2 + 1) + 's';
+            c.style.top = '-10px';
+            document.body.appendChild(c);
+            setTimeout(() => c.remove(), 3000);
+        }
+
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let dots = [];
+        function initBg() {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            dots = Array(100).fill().map(() => ({
+                x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+                s: Math.random() * 2, v: Math.random() * 0.5 + 0.2
+            }));
+        }
+        function draw() {
+            ctx.fillStyle = "#0a0a0c"; ctx.fillRect(0,0,canvas.width,canvas.height);
+            dots.forEach(d => {
+                d.y += d.v; if(d.y > canvas.height) d.y = 0;
+                ctx.fillStyle = "rgba(0, 242, 255, 0.2)";
+                ctx.beginPath(); ctx.arc(d.x, d.y, d.s, 0, Math.PI*2); ctx.fill();
+            });
+            requestAnimationFrame(draw);
+        }
+        window.addEventListener('resize', initBg); initBg(); draw();
+    </script>
+</body>
+</html>
